@@ -1,0 +1,143 @@
+function myFunction() {
+  var email1 = 'cairo.simpson@personalis.com';
+  var email2 = 'cairo.simpson@personalis.com';
+ 
+  var form = FormApp.getActiveForm();  
+  var AllResponses = form.getResponses();
+  var LastFormItem = AllResponses[AllResponses.length - 1];
+  var LastFormResponses = LastFormItem.getItemResponses();
+  var companyName;
+  var fileFolderID = '0BzmDYRLzlJ_YfkRyRXdibFVZUUcxMTR5ajhRWHc1NTQ3R1VNZ3pzNVFPM1VQTmFIN0w1UzQ'; //ID of file output questions
+  var fileFolder = DriveApp.getFolderById(fileFolderID);
+ 
+  for(var i = 0; i < LastFormResponses.length; i++){
+    if(LastFormResponses[i].getItem().getTitle() == 'Company Name'){
+     companyName = LastFormResponses[i].getResponse();
+     break;
+    }
+  }
+ 
+  var fileOutputFolderIter = fileFolder.getFolders();
+ 
+  var docName = companyName + ' Response';
+  var folderID = '1jRgD0QM1iBHm0cTSfHEUJibV-twDazTh'; //ID of folder containing all response folders
+  var newFolder = DriveApp.createFolder(companyName); //New folder for individual response
+  var newFolderID = newFolder.getId();
+ 
+  var folder = DriveApp.getFolderById(folderID);
+  var doc = DocumentApp.create(docName);
+  var docID = doc.getId();
+ 
+   while(fileOutputFolderIter.hasNext()){
+    var singleOutputFolder = fileOutputFolderIter.next();
+    var singleOutputIter = singleOutputFolder.getFiles();
+   
+    while(singleOutputIter.hasNext()){
+      var singleUpload = singleOutputIter.next();
+      moveFiles(singleUpload.getId(), newFolderID);
+    }  
+  }
+ 
+  moveFiles(docID, newFolderID);
+  moveFolder(newFolderID, folderID);
+ 
+  var fileArr = [20];
+  var searchParam = "title contains '" + companyName + "'";
+  var folderIterator = folder.searchFolders(searchParam);
+  var versionTotal = 0;
+  var numVersion = 1;
+ 
+  while(folderIterator.hasNext()){
+        var singleFolder = folderIterator.next();
+        fileArr[versionTotal] = singleFolder;
+        versionTotal++;
+  }
+ 
+   var swapped;
+  do {
+    swapped = false;
+    for(var i = 0; i < versionTotal - 1; i++) {
+      if(fileArr[i].getDateCreated() && fileArr[i + 1].getDateCreated() && fileArr[i].getDateCreated() > fileArr[i + 1].getDateCreated()) {
+        swap(fileArr, i, i + 1);
+        swapped = true;
+      }
+    }
+  } while(swapped);
+ 
+  var i = 0;
+  while(fileArr[i] != null){
+    fileArr[i].setName(companyName + ' Response'+" (VER. "+numVersion + "/" + versionTotal+")");
+    numVersion++;  
+    i++;
+  }
+   
+  var body = doc.getBody();
+  var header = doc.getBody().editAsText();
+
+  var style1 = {};
+  style1[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+  style1[DocumentApp.Attribute.FONT_SIZE] = 11;
+  style1[DocumentApp.Attribute.BOLD] = true;
+ 
+  var style2 = {};
+  style2[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+  style2[DocumentApp.Attribute.FONT_SIZE] = 11;
+  style2[DocumentApp.Attribute.BOLD] = false;  
+
+  var par  = body.appendParagraph(companyName);
+  par.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+ 
+  var pTimestamp = body.appendParagraph('Timestamp');
+  pTimestamp.setAttributes(style1);
+  var timestamp = body.appendParagraph(LastFormItem.getTimestamp() + '\n');
+  timestamp.setAttributes(style2);
+ 
+   var summaryStr = "<big><b><u> Summary of Response</u> </b></big> ";  
+ 
+   for(var i = 0; i < LastFormResponses.length; i++){
+    summaryStr += '<br> <br> <b> '+LastFormResponses[i].getItem().getTitle()+'</b> <br>'+LastFormResponses[i].getResponse();
+    var question = body.appendParagraph(LastFormResponses[i].getItem().getTitle());
+    question.setAttributes(style1);
+    var answer = body.appendParagraph(LastFormResponses[i].getResponse() + '\n');
+    answer.setAttributes(style2);    
+  }
+  body.appendParagraph('\n\n');
+ 
+  var message = {
+      to: email1,
+      cc: email2,
+      subject: 'New Supplier Response ('+companyName+')',
+      name: 'Supplier Questionnaire Alert',
+     htmlBody: 'Hey,<br><br>' + companyName +' has submitted a response to the supplier questionnaire. <br><br> To view the response, click on the following link:  <a href = "'+newFolder.getUrl()+'">' + 'Link to individual response' + '<a/><br>If you would like to access the folder of all submissions, click this link instead: <a href = "'+folder.getUrl()+'">' + 'Link to Folder' + '<a/><br><br> Have a great day!',
+  };
+ 
+  var HtmlFormTakerEmail = 'Thank you for filling out the form. Your submission has been recorded and will be dealt with as soon as possible.<br><br>If you would like to edit your response, click on the following link: <a href = "'+LastFormItem.getEditResponseUrl()+'">' + 'Link back to form' + '<a/><br><br> Best,<br>The Personalis QA Team<br><br>'+summaryStr;
+ 
+  var receipt = {
+    to: LastFormItem.getRespondentEmail(),
+    subject: 'Personalis Supplier Questionnaire Receipt',
+    name: 'Personalis Automated Receipt',
+    htmlBody: HtmlFormTakerEmail,
+  };
+   
+    MailApp.sendEmail(message);  
+    MailApp.sendEmail(receipt);  
+}
+
+function moveFiles(sourceFileId, targetFolderId) {
+  var file = DriveApp.getFileById(sourceFileId);
+  file.getParents().next().removeFile(file);
+  DriveApp.getFolderById(targetFolderId).addFile(file);
+}
+
+function moveFolder(sourceFolderID, targetFolderID){
+ var sourceFolder = DriveApp.getFolderById(sourceFolderID);
+ sourceFolder.getParents().next().removeFolder(sourceFolder);
+ DriveApp.getFolderById(targetFolderID).addFolder(sourceFolder);  
+}
+
+function swap(array, i, j) {
+  var temp = array[i];
+  array[i] = array[j];
+  array[j] = temp;
+}
